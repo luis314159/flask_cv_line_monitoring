@@ -30,10 +30,9 @@ async function getAvailableCameras() {
     }
 }
 
-
 async function startStream() {
     try {
-        var cameraId = document.getElementById('cameraSelect').value;
+        const cameraId = document.getElementById('cameraSelect').value;
         sessionStorage.setItem('selectedCameraId', cameraId);
 
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -47,45 +46,45 @@ async function startStream() {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
 
+        socket.on('connect', () => {
+            console.log('Conexión SocketIO establecida');
+            processFrame();
+        });
+
+        socket.on('processed_frame', (data) => {
+            const blob = new Blob([data], { type: 'image/jpeg' });
+            const url = URL.createObjectURL(blob);
+            document.getElementById('videoStream').src = url;
+            processFrame();
+        });
+
+        socket.on('error', (error) => {
+            console.error('Error en el procesamiento:', error);
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Conexión SocketIO cerrada');
+        });
+
         async function processFrame() {
             try {
                 const frame = await imageCapture.grabFrame();
                 canvas.width = frame.width;
-                canvas.height = frame.height; 
+                canvas.height = frame.height;
                 ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
 
-                canvas.toBlob(async (blob) => {
-                    await sendVideoStream(blob);
-                    await processFrame();
-                }, 'image/jpeg');
+                canvas.toBlob((blob) => {
+                    socket.emit('video_feed', blob); // Asegúrate de usar 'video_feed' para coincidir con el backend
+                }, 'image/jpeg', 0.7); // Ajusta la calidad según necesidad
             } catch (error) {
-                console.error('Error drawing image:', error);
+                console.error('Error al procesar el frame:', error);
             }
         }
 
-        processFrame();
     } catch (error) {
-        console.error('Error accessing the camera:', error);
+        console.error('Error accediendo a la cámara:', error);
     }
 }
-
-async function sendVideoStream(imageBlob) {
-    const formData = new FormData();
-    formData.append('video', imageBlob);
-
-    try {
-        const response = await fetch('/video_feed', {
-            method: 'POST',
-            body: formData
-        });
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        document.getElementById('videoStream').src = url;
-    } catch (error) {
-        console.error('Failed to send video stream:', error);
-    }
-}
-
 
 function showMessage(message) {
     var messageDiv = document.getElementById('message');
@@ -115,128 +114,6 @@ function Dashboard() {
         });
 }
 
-
-async function startDashboardStream() {
-    try {
-        var cameraId = document.getElementById('cameraSelect').value;
-        sessionStorage.setItem('selectedCameraId', cameraId);
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { deviceId: cameraId ? { exact: cameraId } : undefined }
-        });
-
-        const videoTracks = stream.getVideoTracks();
-        const videoTrack = videoTracks[0];
-
-        const imageCapture = new ImageCapture(videoTrack);
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-
-        async function processDashboardFrame() {
-            try {
-                const frame = await imageCapture.grabFrame();
-                canvas.width = frame.width;
-                canvas.height = frame.height; 
-                ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
-
-                canvas.toBlob(async (blob) => {
-                    await sendDashboardStream(blob);
-                    await processDashboardFrame();  // Procesar el siguiente frame solo después de recibir la respuesta
-                }, 'image/jpeg');
-            } catch (error) {
-                console.error('Error drawing image:', error);
-            }
-        }
-
-        processDashboardFrame();  // Iniciar la cadena de procesamiento de frames
-    } catch (error) {
-        console.error('Error accessing the camera:', error);
-    }
-}
-
-async function sendDashboardStream(imageBlob) {
-    const formData = new FormData();
-    formData.append('frame', imageBlob);
-
-    try {
-        const response = await fetch('/process_stream', {
-            method: 'POST',
-            body: formData
-        });
-
-        if (response.ok) {
-            const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            document.getElementById('dashboardImage').src = url;
-            console.log('Frame processed and dashboard updated successfully');
-        } else {
-            console.error('Frame processing failed:', await response.json());
-        }
-    } catch (error) {
-        console.error('Failed to send frame:', error);
-    }
-}
-
-async function Stream() {
-    try {
-        const cameraId = document.getElementById('cameraSelect').value;
-        sessionStorage.setItem('selectedCameraId', cameraId);
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { deviceId: cameraId ? { exact: cameraId } : undefined }
-        });
-
-        const videoTracks = stream.getVideoTracks();
-        const videoTrack = videoTracks[0];
-
-        const imageCapture = new ImageCapture(videoTrack);
-
-        setInterval(async () => {
-            try {
-                const frame = await imageCapture.grabFrame();
-
-                // Enviar el frame original al backend
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = frame.width;
-                canvas.height = frame.height;
-                ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
-
-                canvas.toBlob(async (blob) => {
-                    await sendOriginalFrame(blob);
-                }, 'image/jpeg');
-
-            } catch (error) {
-                console.error('Error capturing frame:', error);
-            }
-        }, 50);
-    } catch (error) {
-        console.error('Error accessing the camera:', error);
-    }
-}
-
-async function sendOriginalFrame(imageBlob) {
-    const formData = new FormData();
-    formData.append('frame', imageBlob);
-
-    try {
-        const response = await fetch('/process_stream', {
-            method: 'POST',
-            body: formData
-        });
-        
-        if (!response.ok) {
-            console.error('Failed to send original frame to process_stream:', await response.text());
-        }
-    } catch (error) {
-        console.error('Failed to send original frame:', error);
-    }
-}
-
 getAvailableCameras();
-document.getElementById('cameraSelect').addEventListener('change', () => {
-    startStream();
-});
-const mediaRecorder = new MediaRecorder(stream, {
-    mimeType: 'image/jpeg'
-});
+document.getElementById('cameraSelect').addEventListener('change', startStream);
+const socket = io.connect('http://127.0.0.1:5000')

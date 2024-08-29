@@ -1,23 +1,15 @@
 from flask import Flask, render_template, Response, request, jsonify, send_file
 import cv2
-import os
-from datetime import datetime
-from threading import Thread
-from image_processing import process_image
-import serial
-import argparse
-import logging
 from processing import *
 import json
-from flask import Flask, render_template, Response, request, jsonify
-import threading
-import logging
+from flask_socketio import SocketIO, emit
 
 target_label = 'stack_light'
 current_bounding_boxes = []
 bounding_boxes = None
 
 app = Flask(__name__)
+socketio = SocketIO(app)
 
 @app.route('/')
 def index():
@@ -39,28 +31,23 @@ def process_frame(frame):
 
     return processed_frame, bounding_boxes
 
-@app.route('/video_feed', methods=['POST'])
-def video_feed():
-    if 'video' not in request.files:
-        return jsonify({"success": False, "error": "No video part found in the request."}), 400
-    
-    video = request.files['video']
-
-    np_array = np.frombuffer(video.read(), np.uint8)
+@socketio.on('video_feed')
+def handle_video_feed(data):
+    np_array = np.frombuffer(data, np.uint8)
     frame = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
-    
-    if frame is None or frame.size == 0:
-        return jsonify({"success": False, "error": "Empty frame received"}), 400
-    
-    processed_frame, _ = process_frame(frame)
-    
-    if processed_frame is None:
-        return jsonify({"success": False, "error": "Frame processing failed"}), 400
-    
-    ret, buffer = cv2.imencode('.jpg', processed_frame)
-    frame = buffer.tobytes()
 
-    return Response(frame, mimetype='image/jpeg')
+    if frame is None or frame.size == 0:
+        emit('error', {'success': False, 'error': 'Empty frame received'})
+        return
+
+    processed_frame, _ = process_frame(frame)
+
+    if processed_frame is None:
+        emit('error', {'success': False, 'error': 'Frame processing failed'})
+        return
+
+    ret, buffer = cv2.imencode('.jpg', processed_frame)
+    emit('processed_frame', buffer.tobytes())
 
 @app.route('/save_bounding_box', methods=['GET'])
 def save_bounding_box():
@@ -121,4 +108,5 @@ def initialize_time():
     return jsonify({"success": True})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+
