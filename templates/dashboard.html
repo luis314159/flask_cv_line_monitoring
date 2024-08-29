@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <img class="logo" src="https://mma.prnewswire.com/media/352910/visteon_corporation_logo.jpg?p=facebook" alt="Company Logo">
+        <h1>Performance Dashboard</h1>
+        <div class="dashboard-image">
+            <img id="dashboardImage" src="{{ url_for('static', filename='images/dashboard.png') }}" alt="Dashboard">
+        </div>
+        <div class="select-container">
+            <select id="cameraSelect"></select>
+        </div>
+    </div>
+    <div class="video-container">
+        <img id="videoStream" alt="Video Stream">
+    </div>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async (event) => {
+            // Inicializar tiempos llamando a la API
+            await fetch('/initialize_time', {
+                method: 'POST'
+            });
+            getAvailableCameras().then(() => {
+                startDashboardStream();
+                //startStream()
+            });
+        });
+    </script>
+</body>
+</html>
